@@ -11,5 +11,11 @@
 ### Class 01 
 [Introduction to Data Mining & R]
 (https://github.com/dawn-llp/DM-exercise/blob/master/DM-class01.ipynb) 
-<p>Load package, files and data; summarize &visualize data; cauchy distribution; log-log power law
+<p>Load package, files and data; summarize &visualize data; cauchy distribution; log-log power law</p>
 
+## 
+<p></p>
+### Class 02 Linear Regression
+<p>[Practice Linear &Non-Linear Regression with DirectMarketing.csv](https://github.com/dawn-llp/DM-exercise/blob/master/HW1-DirectMarketing.Rmd) 
+<p>Plot summary, leaps variable selection, Lasso variable selection, stepwise selection
+<p>HTML file is too big to be displayed.
