@@ -1,0 +1,691 @@
+---
+title: "HW1-DirectMarketing"
+author: "Liping Li (lil112@pitt.edu)"
+date: "2017.01.14"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,warning=FALSE)
+```
+
+```{r library infor}
+# install.packages("data.table","ggplot2","gridExtra","caret","MASS","bestglm","glmnet","locfit"# )
+
+library(data.table) # easy data manipulation
+library(ggplot2) # nice plot
+library(gridExtra) # sort plots
+library(caret) # train models
+library(glmnet) # lasso regularization
+library(MASS) # stepwise
+library(bestglm) # lm subset search
+library(locfit) 
+```
+
+## 1. Import Data
+
+Use the dataset D2 described on p.294 in DMR
+
+```{r import data}
+data.file <- "http://www.yurulin.com/class/spring2017_datamining/data/DirectMarketing.csv"
+D2 <- read.csv(data.file, header=T, sep=",") 
+# have header(column names), seperator is comma
+dim(D2) # check number of rows and columns
+```
+1000 customers and 10 variables.
+
+
+## 2. Explore Data
+
+### 2.1 Identify and report response variable and predictors.
+```{r show info}
+str(D2)
+```
+
+* Response variable:
+    + AmountSpent (numeric; in dollars)
+  
+* Predictors:
+    + Age (factor; 3 levels)
+    + Gender (factor; Female/Male)
+    + OwnHome (factor; Own/Rent)
+    + Married (factor; Married/Single)
+    + Location (factor; Close/Far; distance to the nearest brick and mortar store)
+    + Salary (numeric; yearly salary of customer in dollars)
+    + Children (number of children)
+    + History (factor; 3 levels)
+    + Catalogs (number of catalogs sent; customer receive catalogs and then order via mail)
+
+Although Children and Catalogs are integers, they seem to have only several levels. 
+```{r Children&Catalog summary, fig.align='left',fig.width=10,fig.height=4}
+D2 <- data.table(D2) 
+# upgrade data.frame to data.table. 
+# data.table inherits from data.frame therefore keeps data.frame properties.
+
+print("Summary Children and Catalogs as numeric:")
+summary(D2[,c("Children","Catalogs")]) 
+
+D2 <- D2[,c("Children","Catalogs"):= lapply(.SD, as.factor), .SDcols = c("Children","Catalogs")] # change data type
+
+print("Summary Children and Catalogs as factor:")
+summary(D2[,c("Children","Catalogs")])
+```
+Children and Catalogs will be treated as factors(categorical variables) for their discrete distributions.
+
+### 2.2 Summary table plus numerical variable summary list.
+```{r summary D2}
+summary(D2) # levels for factors &range for numeric
+```
+
+Summary table is displayed above. It shows frequency of categorical variable levels and distribution information of numerical variables: min, 1st quantile, median, mean, 3rd quantile, and max. But **no standard deviation**.
+
+From the summary table, we can find that the majority of customers are at middle age, not parents yet, and living close to a store that selling similar products as the direct marketing mailed. 
+
+Nearly half of them are female and the other half are male. For house owning condition, people who own a house are roughly as many as those who rent. Also, married people are roughly as many as singles.
+
+People's consumption history seems to be equally distribute in 4 levels: High, Medium, Low and NA's, slightly more in NA's.
+
+Catalogs distribution also seems even, and slightly more in "6" and "12".
+
+Now let me construct the required **numerical summary list**:variable name, mean, median, 1st quartile, 3rd quartile, and standard deviation. Plusing min and max for complement.
+
+```{r numeric summary list}
+numeric.variable <- D2[ ,c("Salary","AmountSpent"),with=F]
+
+sapply(numeric.variable, function(sl) 
+       list(mean=mean(sl), median=median(sl), 
+       min=min(sl), first.quartile=quantile(sl,probs = 0.25),
+       third.quartile=quantile(sl, probs = 0.75), max=max(sl),
+       standard.deviation=sd(sl)))
+rm(numeric.variable)
+```
+
+Finding mean is much greater than median, I suspect Salary and AmountSpent distributions are skewed to right.
+
+
+### 2.3 Deal with History NA's.
+
+We can find 303 NA's of History in summary table. But it cannot be treated as missing value. Because it means that this customer has not yet purchased anything. I think it's better to be labeled as **None**.
+
+```{r History NA->None}
+D2 <- D2[is.na(History), History := "None"] # overwrite NA's to None
+summary(D2$History)
+```
+
+### 2.4 Numeric variable distribution.
+
+Plot density for numerical variables AmountSpent and Salary.
+
+```{r AmountSpent density, fig.align='left',fig.width=10,fig.height=4}
+theme_set(theme_bw()) # white background in plot
+myPalette <- c("#56B4E9", "#009E73", "#E69F00", "#0072B2", "#D55E00", "#CC79A7")
+
+p <- ggplot(D2, aes(x=AmountSpent))
+p <- p + geom_density(alpha=0.7, fill="#56B4E9")
+p
+```
+```{r Salary density, fig.align='left',fig.width=10,fig.height=4}
+p <- ggplot(D2, aes(x=Salary))
+p <- p + geom_density(alpha=0.7, fill=myPalette[1])
+p
+```
+
+Both AmountSpent and Salary are non-normal distributions and skewed to right. 
+
+Salary has two peaks.
+
+Adds **normality test** information.
+
+```{r normality test}
+shapiro.test(D2$AmountSpent)
+shapiro.test(D2$Salary)
+```
+p-value is far more less than 0.05, demonstrating that we can reject the data is normally distributed.
+
+
+### 2.5 Numeric variable correlationship.
+
+Plot scatterplot for AmountSpent and Salary and examine their correlationship.
+
+```{r scatterplot, fig.align='center',fig.width=6,fig.height=5}
+p <- ggplot(D2, aes(x=Salary, y=AmountSpent))+geom_point(color=myPalette[1])
+p <- p + geom_smooth(method="lm", color="black")
+p
+```
+
+Salary and AmountSpent seems positively correlated, but variation at the right side are very big. Let's test the correlation significance.
+
+```{r Salary x AmountSpent cor}
+cor.test(D2$Salary, D2$AmountSpent, method = "pearson")
+```
+
+The coefficient is about 0.70, meaning increase in Salary is highly correlated with increase in AmountSpent. p < 0.001. This correlation between them is significant.
+
+See how much this single variable explains.
+```{r Salary x AmountSpent lm}
+lm00 <- lm(AmountSpent~Salary, data=D2)
+summary(lm00)
+```
+
+
+
+### 2.5 Categorical variable X AmountSpent
+For each categorical predictor, generate the conditional density plot of response variable
+
+#### 2.5.1 Age X AmountSpent
+```{r Age X AmountSpent, fig.align='left',fig.width=10,fig.height=6}
+p <- ggplot(D2, aes(x=AmountSpent))
+p <- p + geom_density(alpha=0.7,fill=myPalette[2])
+p <- p + facet_grid(Age ~.) + xlab("AmountSpent Density | Age Group")
+p
+```
+
+AmountSpent distribtution on each Age group all seem to be skewed to right. Most Young people spent less than Middle &Old ones. Let's see whether these differences are statistically significant.
+
+```{r Age X AmountSpent mean}
+AgeLevel.mean <- D2[, list(mean=mean(AmountSpent),
+                           standard.deviation=sd(AmountSpent)),by="Age"]
+print(AgeLevel.mean)
+```
+
+```{r Age X AmountSpent Anova}
+Age.aov <- aov(AmountSpent~Age, data=D2)
+summary(Age.aov)
+TukeyHSD(Age.aov)
+```
+Age grouped AmountSpent difference effect is significant(tested by ANOVA), and Young-Middle and Young-Old difference is confirmed by Tukey HSD test. Young group spent averagely 559 dollars, 943-dollar less than Middle Age group and 874-dollar less than Old Age group.
+
+Store this module as a function for easy repeat on multi-level categorical factors.
+```{r cat mean function}
+Cat.Amount.Mean <- function(dt,cat)
+{
+  CatLevel.mean <- dt[, list(mean=mean(AmountSpent),
+                           standard.deviation=sd(AmountSpent)),by=cat]
+  print(CatLevel.mean)
+  
+  Cat.aov <- aov(AmountSpent~cat, dt)
+  print(summary(Cat.aov))
+  print(TukeyHSD(Cat.aov))
+}
+```
+
+#### 2.5.2 Gender X AmountSpent
+```{r Gender X AmountSpent, fig.align='left',fig.width=10,fig.height=4}
+p <- ggplot(D2, aes(x=AmountSpent, fill=Gender))
+p <- p + geom_density(alpha=0.7)+scale_fill_manual(values=myPalette)
+p <- p + xlab("AmountSpent Density | Gender")
+p
+```
+Female tend to spend less than male. AmountSpent distribtution on each Gender group is also skewed to right. Since it's a binary factor, I think t-test for the mean difference will work. Some references suggest t-test sample need to be normal distribution, where some say t-test is robust to non-normality (http://thestatsgeek.com/2013/09/28/the-t-test-and-robustness-to-non-normality/). Here I will go straight with t test.
+
+```{r Gender X AmountSpent t test}
+t.test(AmountSpent~Gender,data=D2)
+```
+Female's average spent is 1025.34 dollars, 387.51 dollars less than Male's. The probability of null hypothesis that the difference is equal to 0 is less than 0.01. Therefore, we consider this difference is not equal to 0.
+
+#### 2.5.3 OwnHome X AmountSpent
+```{r OwnHome X AmountSpent, fig.align='left',fig.width=10,fig.height=4}
+p <- ggplot(D2, aes(x=AmountSpent, fill=OwnHome))
+p <- p + geom_density(alpha=0.7)+scale_fill_manual(values=myPalette)
+p <- p + xlab("AmountSpent Density | OwnHome Condition")
+p
+```
+People who rent a house tend to spend less than those who own a house. 
+
+```{r OwnHome X AmountSpent t test}
+t.test(AmountSpent~OwnHome,data=D2)
+```
+People who rent a house spent 869 dollars averagely, 774-dollar less than those who own a house. This difference is statistically significant. 
+
+#### 2.5.4 Married X AmountSpent
+```{r Married X AmountSpent, fig.align='left',fig.width=10,fig.height=4}
+p <- ggplot(D2, aes(x=AmountSpent, fill=Married))
+p <- p + geom_density(alpha=0.7)+scale_fill_manual(values=myPalette)
+p <- p + xlab("AmountSpent Density | Marriage Status")
+p
+```
+People who are single tend to spend less than those who are married. 
+
+```{r Married X AmountSpent t test}
+t.test(AmountSpent~Married,data=D2)
+```
+People who are single spent 758 dollars averagely, 914-dollar less than those who are married. This difference is statistically significant. 
+
+#### 2.5.5 Location X AmountSpent
+```{r Location X AmountSpent, fig.align='left',fig.width=10,fig.height=4}
+p <- ggplot(D2, aes(x=AmountSpent, fill=Location))
+p <- p + geom_density(alpha=0.7)+scale_fill_manual(values=myPalette)
+p <- p + xlab("AmountSpent Density | Location Condition")
+p
+```
+
+```{r Location X AmountSpent t test}
+t.test(AmountSpent~Location,data=D2)
+```
+People who live far away from a store spent 1596 dollars averagely, 535-dollar more than those who live close to a local store. This difference is statistically significant. 
+
+#### 2.5.6 Children X AmountSpent
+```{r Children X AmountSpent, fig.align='left',fig.width=10,fig.height=8}
+p <- ggplot(D2, aes(x=AmountSpent))+facet_grid(Children~.)
+p <- p + geom_density(alpha=0.7, fill=myPalette[2])
+p <- p + xlab("AmountSpent Density | Children")
+p
+```
+
+```{r Children X AmountSpent mean test}
+Cat.Amount.Mean(D2,D2$Children)
+```
+More children people have, less they spent. Paired mean differences between people with 0, 1, 2, 3 are all significant except 2-3 pair.
+
+#### 2.5.7 Consumption History X AmountSpent
+```{r History X AmountSpent, fig.align='left',fig.width=10,fig.height=8}
+p <- ggplot(D2, aes(x=AmountSpent))+facet_grid(History~.)
+p <- p + geom_density(alpha=0.7, fill=myPalette[2])
+p <- p + xlab("AmountSpent Density | Consumption History")
+p
+```
+
+```{r History X AmountSpent mean test}
+Cat.Amount.Mean(D2,D2$History)
+```
+People who bought higher volume before tend to spent more now. People who never bought things before have a moderate mean AmountSpent. Mean differences between groups are all significant.
+
+#### 2.5.8 Catalogs X AmountSpent
+```{r Catalogs X AmountSpent, fig.align='left',fig.width=10,fig.height=8}
+p <- ggplot(D2, aes(x=AmountSpent))+facet_grid(Catalogs~.)
+p <- p + geom_density(alpha=0.7, fill=myPalette[2])
+p <- p + xlab("AmountSpent Density | Children")
+p
+```
+
+```{r Catalogs X AmountSpent mean test}
+Cat.Amount.Mean(D2,D2$Catalogs)
+```
+More catalogs customers received, more dollars they spent. AmountSpent mean differences between people who received 6, 12, 18, 24 are all statistically significant.
+
+
+### 2.6 Correlations between Indepent Variables
+AmountSpent density plot pattern of binary variables are very similar. I plan to go over correlationships between independent variables.
+```{r cat corr}
+cat.variable <- data.frame(D2[ ,-c("Salary","AmountSpent"),with=F])
+
+# I have a self-defined function for pairwise chi-square test
+# https://github.com/dawn-llp/Functions/blob/master/MultiChi.R"
+# Cannot use source() to load the url, but local file works.
+# Copy the whole function code
+chiMatrix = function(dt) # input a data frame or matrix
+{
+  n=ncol(dt)
+  c=rep(1,(n*n))
+  rec=matrix(c,n)
+  
+  for (i in 1:n)
+  {
+    for (j in i:n)
+    {
+      rec[i,j]=chisq.test(dt[,i],dt[,j])$p.value
+      rec[j,i]=rec[i,j]
+    }
+  }
+  colnames(rec)=colnames(dt)
+  rownames(rec)=colnames(dt)
+  return(rec)
+}
+
+pickChi=function(dt,p=0.01) # input a data frame or matrix and p-value level
+{
+  data=chiMatrix(dt)
+  n=ncol(data)
+  a=colnames(data)
+  for (i in 1:(n-1))
+  {
+    for (j in (i+1):n)
+    {
+      if(data[i,j]>p)
+        cat("Chi-square test [",a[i],", ",a[j],"] >",p,"\n")
+    }
+  }
+#  return(data)
+}
+
+# list variable pairs that are independentt to each other at p=0.05
+pickChi(cat.variable, p=0.05) 
+
+```
+Only these 6 pair of variables are independent to each other.
+
+Let's examine a pair that suggested dependency by Chi-Square test, e.g. [Age, OwnHome]
+```{r Age X OwnHome, fig.align='center',fig.width=6,fig.height=4}
+positions <- c("Young","Middle","Old")
+p <- ggplot(D2, aes(Age, fill=OwnHome))
+p <- p + geom_bar()+scale_fill_manual(values=myPalette)
+p <- p + scale_x_discrete(limits = positions) + xlab("Age Group")
+p
+```
+Young people are more likely to rent a house rather than own.
+
+How about Young people's salary range? Does any categorical variable correlates with Salary?
+
+```{r cat X Salary, fig.align="left", fig.width=10, fig.height=10}
+p1 <- qplot(Age, Salary, data=D2, geom="boxplot")
+p2 <- qplot(Gender, Salary, data=D2, geom="boxplot")
+p3 <- qplot(OwnHome, Salary, data=D2, geom="boxplot")
+p4 <- qplot(Married, Salary, data=D2, geom="boxplot")
+p5 <- qplot(Location, Salary, data=D2, geom="boxplot")
+p6 <- qplot(Children, Salary, data=D2, geom="boxplot")
+p7 <- qplot(History, Salary, data=D2, geom="boxplot")
+p8 <- qplot(Catalogs, Salary, data=D2, geom="boxplot")
+grid.arrange(p1,p2,p3,p4,p5,p6,p7,p8, ncol=2)
+```
+Salary seems to be correlated with Age, Gender, OwnHome, Married, and History.
+```{r cat X Salary test}
+cat.name=names(cat.variable)
+D2 <- data.frame(D2)
+y <- D2$Salary
+for (i in cat.name)
+{
+  x <- D2[,i]
+  lm.test <- aov(y~x)
+  cat("Salary~",i)
+  cat("......\n")
+  print(summary(lm.test))
+  cat("\n")
+}
+```
+Anova test shows Salary has correlation with all catagorical variables except Location and Children.
+
+In general, most independent variables are **correlated with each other**.
+
+## 3. Regression Modeling
+
+### 3.1 All Predictors Included Model
+```{r all-lm}
+model1 <- lm(AmountSpent~., data=D2)
+summary(model1)
+model1.rmse <- sqrt(mean((model1$residuals)^2))
+cat("Model RMSE = ",model1.rmse)
+```
+When I apply standard linear regression on all predictors, the first level of catagorical variables is included in intercept. Overall, this model performs explains more than single Salary variable($ajusted-R^2 = 0.49$). $R^2 = 0.75$, $adjusted-R^2 = 0.74$, $RMSE = 481.72$.
+
+In this model, Location level Far(compared with Close), Catalogs level 12, 18 and 24(compared with 6), and Salary are significantly positively correlated with more AmountSpent. And Children quantity 1, 2 and 3(compared with 0) and History consumption level Low and Medium(compared with High) are significantly negatively correlated with more AmountSpent. This result suggests **people who live far from a local store, have more salary, less children and high history consumption volume and recevie more catalogs are more likely to spend more money**.
+
+What if I set Children and Catalogs back to numeric type?
+```{r all-lm2}
+D2 <- data.table(D2)
+D2 <- D2[,c("Children","Catalogs"):=lapply(.SD, as.character),.SDcols=c("Children","Catalogs")] # if change directly to numeric, level will start from 1
+
+D2 <- D2[,c("Children","Catalogs"):=lapply(.SD, as.numeric), .SDcols=c("Children","Catalogs")] 
+
+summary(D2[,c("Children","Catalogs"),with=F])
+
+model2 <- lm(AmountSpent~., data=D2)
+summary(model2)
+model2.rmse <- sqrt(mean((model2$residuals)^2))
+cat("Model RMSE = ",model2.rmse)
+```
+Result is similar. To simplify, I keep them as numeric variables now.
+Remove insignificant predictors, the equation will be 
+
+$AmountSpent = Location + Salary + Children + History + Catalogs$
+
+```{r plot lm1,fig.align="left",fig.width=10,fig.height=6}
+layout(matrix(c(1,2,3,4),2,2)) # optional 4 graphs/page 
+plot(model2)
+shapiro.test(model2$residuals)
+```
+Residuals distribution is not normal too, failing to meet the normality requirement.
+
+
+### 3.2 Predictor Combination Linear Model
+#### 3.2.1 Predictor Search
+I want to try different subsets of predictors in a cheap way.
+```{r linear combination, align="left",fig.width=10,fig.height=8}
+combo1 <- regsubsets(AmountSpent~.,data=D2,nbest=2,method="exhaustive")
+plot(combo1,scale="adjr2") 
+```
+Trade-off adjusted R-square increase and predictor numbers, I think below can be consider candidates for the best one.
+
+$AmountSpent = Age + Location + Salary + Children + History + Catalogs$ 
+
+$AmountSpent = Gender + Location + Salary + Children + History + Catalogs$ 
+
+$AmountSpent = Salary + Catalogs + location$
+
+Plus a model built by variables that are relatively independent in previous correlation test.
+
+$AmountSpent = Salary + Children + location$
+
+Plus the result of full-predictior model
+
+$AmountSpent = Location + Salary + Children + History + Catalogs$
+
+
+#### 3.2.2 Compare RMSE of LOOCV training result of each models.
+```{r cv lms}
+train.control=trainControl(method="LOOCV")
+cv.fit1 <- train(AmountSpent ~ Location + Salary + Children + History + Catalogs,
+                 data=D2, trControl=train.control,method="lm")
+cv.fit2 <- train(AmountSpent ~ Salary + Children + Location,
+                 data=D2, trControl=train.control,method="lm")
+cv.fit3 <- train(AmountSpent ~ Salary + Catalogs + Location,
+                 data=D2, trControl=train.control,method="lm")
+cv.fit4 <- train(AmountSpent ~ Gender + Location + Salary + Children + History + Catalogs,
+                 data=D2, trControl=train.control,method="lm")
+cv.fit5 <- train(AmountSpent ~ Age + Location + Salary + Children + History + Catalogs,
+                 data=D2, trControl=train.control,method="lm")
+print("Model 1: AmountSpent = Location + Salary + Children + History + Catalogs")
+print(cv.fit1$results)
+print("Model 2: AmountSpent = Salary + Children + location")
+print(cv.fit2$results)
+print("Model 3: AmountSpent = Salary + Catalogs + location")
+print(cv.fit3$results)
+print("Model 4: AmountSpent = Gender + Location + Salary + Children + History + Catalogs")
+print(cv.fit4$results)
+print("Model 5: AmountSpent = Age + Location + Salary + Children + History + Catalogs")
+print(cv.fit5$results)
+```
+
+In terms of RMSE, Model 4 is the best $RMSE = 488.13$. It contains one more predictor the model 1. So what about full predictors model?
+```{r cv lms2}
+
+cv.fit6 <- train(AmountSpent ~ .,
+                 data=D2, trControl=train.control,method="lm")
+print("Model 6: All predictors")
+print(cv.fit6$results)
+```
+Adding more predictors won't decrease **LOOCV RMSE**. I think **Model 4** is the best linear model. 
+
+
+#### 3.2.3 Confirm feature selection with Lasso regression.
+```{r lasso}
+x <- D2[,-10,with=F]
+x <- x[ ,lapply(.SD, as.numeric)] # need to coerce to numeric for lasso
+x <- as.matrix(x)
+y <- as.matrix(D2[, 10,with=F])
+cv.lasso=cv.glmnet(x,y,nfolds=1000)
+plot(cv.lasso)
+coef(cv.lasso)
+```
+
+Lasso regularization suggests $AmountSpent = Location + Salary + Children + Catalogs$. Test again.
+
+```{r cv lms3}
+
+cv.fit7 <- train(AmountSpent ~ Location + Salary + Children + Catalogs,
+                 data=D2, trControl=train.control,method="lm")
+print("Model 7: AmountSpent = Location + Salary + Children + Catalogs")
+print(cv.fit7$results)
+rm(x,y)
+```
+Testing lm RMSE does not give a better result than Model 4. Since lasso test in glmnet package need all numeric variables, it might be inappropriate in this case.
+
+### 3.3 Predictor Combination non-Linear Model
+#### 3.3.1 Polynomial Regression
+Only Salary is appropriate for this kind of transformation. Though I label Children and Catalogs as numbers, but they have only 4 levels, too few to be treated as continous variable.
+```{r ploy salary}
+# lm00 is AmountSpent ~ Salary, adjusted R-square 0.49
+lm01 <- lm(AmountSpent ~ poly(Salary, degree = 10), data = D2)
+summary(lm01)
+```
+Slight increase in adjusted R square with significant (Salary)^5^ and (Salary)^8^ predictor. Let's add it into the Model 4.
+
+```{r salary + other}
+lm02 <- lm(AmountSpent ~ Gender + Location + Salary + Children + History + Catalogs 
+           +I(Salary)^5+I(Salary)^8, data = D2)
+summary(lm02)
+```
+The result shows a great probability of collinear. 
+
+
+#### 3.3.2 Validation script provided on the lecture page with ploy model of salary.
+Rewrite some parts to smoothly run on my pc.
+```{r salary ploy cv}
+## split our data into a training set and test set
+x <- as.data.frame(D2[, 6,with=F])
+y <- as.data.frame(D2[, 10,with=F])
+n <- nrow(x) # change 1
+set.seed(12345)
+indices <- sample(n,round (0.8 * n)) # change 2
+training.x <- x[indices,] # change 3
+training.y <- y[indices,]
+test.x <- x[-indices,]
+test.y <- y[-indices,]
+training.df <- data.frame(X = training.x, Y = training.y)
+test.df <- data.frame(X = test.x, Y = test.y)
+## use RMSE to measure the performance
+rmse <- function(y, h) {
+  return(sqrt(mean((y - h) ^ 2)))
+}
+## loop over a set of polynomial degrees (from 1 to 12)
+performance <- data.frame()
+for (d in 1:12) 
+{
+  poly.fit <- lm(Y ~ poly(X, degree = d), data = training.df) 
+  performance <- rbind(performance ,
+                       data.frame(Degree = d,
+                                  Data = "train",
+                                  RMSE = rmse(training.y, 
+                                              predict(poly.fit,                                                                                       newdata = training.df))))
+                                                                   
+  performance <- rbind(performance ,
+                       data.frame(Degree = d,
+                                  Data = "test",
+                                  RMSE = rmse(test.y, 
+                                              predict(poly.fit ,
+                                                      newdata = test.df))))
+}
+## plot the performance of the polynomial regression models for all the degrees
+ggplot(performance , aes(x = Degree , y = RMSE , linetype = Data)) +
+  geom_point() +
+  geom_line()
+```
+
+After 6 degree, test RMSE increases when train RMSE still drops. 
+
+
+#### 3.3.3 Local Polynomial Regression
+```{r salary locploy cv}
+## split our data into a training set and test set
+set.seed(12345)
+indices <- sample(n,round (0.8 * n)) 
+training.x <- x[indices,] 
+training.y <- y[indices,]
+test.x <- x[-indices,]
+test.y <- y[-indices,]
+training.df <- data.frame(X = training.x, Y = training.y)
+test.df <- data.frame(X = test.x, Y = test.y)
+
+## loop over a set of nn selections
+performance <- data.frame()
+nn.selection <- c(1,3,5,7,9,15,50,100)
+for (n in nn.selection) 
+{
+  loc.fit <- locfit(Y ~ lp(X, nn = n), data = training.df) 
+  performance <- rbind(performance ,
+                       data.frame(NN = n,
+                                  Data = "train",
+                                  RMSE = rmse(training.y, predict(loc.fit, 
+                                                                  newdata = training.df))))
+                                                                   
+  performance <- rbind(performance ,
+                       data.frame(NN = n,
+                                  Data = "test",
+                                  RMSE = rmse(test.y, predict(loc.fit ,
+                                                              newdata = test.df))))
+}
+## plot the performance of the polynomial regression models for all the degrees
+ggplot(performance , aes(x = NN , y = RMSE , linetype = Data)) +
+  geom_point() +
+  geom_line()
+```
+
+This method yeilds poor result.
+
+
+### 3.4 Import Variables in Best Model
+My best models is 
+**Model 4: AmountSpent = Gender + Location + Salary + Children + History + Catalogs**
+
+It's partly supported by lasso regression result 
+
+$AmountSpent = Location + Salary + Children + Catalogs$
+
+and subset search function.
+
+#### 3.4.1 Plot variable importance.
+Here I extract its variable importance.
+```{r varimp}
+plot(varImp(cv.fit4)) # importance%
+```
+
+
+#### 3.4.2 Examine this selection of variables by backward stepwise method.
+
+```{r manual backward}
+fit <- lm(AmountSpent ~ Salary + Catalogs + Location + Children + History + Gender,data=D2)
+step <- stepAIC(fit, direction="backward")
+step$anova # display results
+```
+
+**Gender can be removed**. Check the RMSE again.
+
+
+#### 3.4.3 Check RMSE change
+```{r manual forward}
+cv.var1 <- train(AmountSpent ~ Salary,
+                 data=D2, trControl=train.control,method="lm")
+cv.var2 <- train(AmountSpent ~ Salary + Catalogs,
+                 data=D2, trControl=train.control,method="lm")
+cv.var3 <- train(AmountSpent ~ Salary + Catalogs + Location,
+                 data=D2, trControl=train.control,method="lm")
+cv.var4 <- train(AmountSpent ~ Salary + Catalogs + Location + Children,
+                 data=D2, trControl=train.control,method="lm")
+cv.var5 <- train(AmountSpent ~ Salary + Catalogs + Location + Children + History,
+                 data=D2, trControl=train.control,method="lm")
+cv.var6 <- train(AmountSpent ~ Salary + Catalogs + Location + Children + History + Gender,
+                 data=D2, trControl=train.control,method="lm")
+print(cv.var1$results)
+print(cv.var2$results)
+print(cv.var3$results)
+print(cv.var4$results)
+print(cv.var5$results)
+print(cv.var6$results)
+
+```
+
+Deleting Gender won't influence LOOCV RMSE much. 
+
+## 4. Summary
+Finally I decide to change my best model to:
+
+**AmountSpent = Salary + Catalogs + Location + Children + History**.
+(Order presents importance)
+
+The scatter plot of Salary and AmountSpent does not show a explicit pattern, making it hard to decide how to choose data transformation metheod or ploy degree.
+
+Many relations among independent variables are not "independent". Using all the predictiors and  poly of salary all increase the risk of collinearity.
+
+I think Salary + Catalogs + Location + Children + History is a reasonable combination. Salary reveals economic status and it's correlated to other neglected factors like Gender, Age, OwnHome. Catalogs demonstrates how much ad information customers receive. Location show how far away a customer lives from a local store, independent of other factors. Children indicates family size, correlating with Age, OwnHome, etc. History indicates one's consumption tendency, also correlating with other factors. Therefore, they together builds a linear model has small RMSE compared with using all the predictors.
