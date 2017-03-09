@@ -16,16 +16,17 @@
 ## 
 <p></p>
 ### Class 02 Linear Regression
-<br>[Practice Linear &Non-Linear Regression with DirectMarketing.csv](https://github.com/dawn-llp/DM-exercise/blob/master/HW1-DirectMarketing.Rmd) 
-<br>Plot summary, leaps variable selection, Lasso variable selection, stepwise selection
+[Practice Linear &Non-Linear Regression with DirectMarketing.csv](https://github.com/dawn-llp/DM-exercise/blob/master/HW1-DirectMarketing.Rmd) 
+<p>Plot summary, leaps variable selection, Lasso variable selection, stepwise selection.
 <br>HTML file is too big to be displayed.</p>
 
 ## 
 <p></p>
 ### Homework 3 Classification & Pipeline deployment
-<br>[Practice classification](https://github.com/dawn-llp/DM-exercise/blob/master/HW3-Audit-lil112.md)
-<br>Include multiple methods: knn, svm, naiveBayes, adaBoost, etc. Compare averaged performance and cutoff-set performance.
-<br>[Deploy pipeline](https://github.com/dawn-llp/DM-exercise/blob/master/hw3-functions.R)
-<br>Construct data load, prepare, modeling, evaluation pipeline with R functions.
-</p>
+1.[Practice classification](https://github.com/dawn-llp/DM-exercise/blob/master/HW3-Audit-lil112.md)
+
+<p>Include multiple methods: knn, svm, naiveBayes, adaBoost, etc. Compare averaged performance and cutoff-set performance.</p>
+
+2.[Deploy pipeline](https://github.com/dawn-llp/DM-exercise/blob/master/hw3-functions.R)
+<p>Construct data load, prepare, modeling, evaluation pipeline with R functions.</p>
 
