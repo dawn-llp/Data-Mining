@@ -19,3 +19,10 @@
 <p>[Practice Linear &Non-Linear Regression with DirectMarketing.csv](https://github.com/dawn-llp/DM-exercise/blob/master/HW1-DirectMarketing.Rmd) 
 <p>Plot summary, leaps variable selection, Lasso variable selection, stepwise selection
 <p>HTML file is too big to be displayed.
+
+## 
+<p></p>
+### Homework 3 Classification & Pipeline deployment
+<p>[Practice classification](https://github.com/dawn-llp/DM-exercise/blob/master/HW3-Audit-lil112.md) 
+<p>[Deploy data load, prepare, modeling, evaluation pipeline](https://github.com/dawn-llp/DM-exercise/blob/master/hw3-functions.R)
+
