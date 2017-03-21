@@ -22,11 +22,11 @@
 
 ## 
 <p></p>
-### Homework 3 Classification & Pipeline deployment
+### Homework 3 Classification & Function deployment
 1.[Practice classification](https://github.com/dawn-llp/DM-exercise/blob/master/HW3-Audit-lil112.md)
 
 <p>Include multiple methods: knn, svm, naiveBayes, adaBoost, etc. Compare averaged performance and cutoff-set performance.</p>
 
-2.[Deploy pipeline](https://github.com/dawn-llp/DM-exercise/blob/master/hw3-functions.R)
-<p>Construct data load, prepare, modeling, evaluation pipeline with R functions.</p>
+2.[Deploy function](https://github.com/dawn-llp/DM-exercise/blob/master/hw3-functions.R)
+<p>Construct data load, prepare, modeling, evaluation functions.</p>
 
