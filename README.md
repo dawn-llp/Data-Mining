@@ -31,3 +31,23 @@
 2.[Deploy function](https://github.com/dawn-llp/DM-exercise/blob/master/hw3-functions.R)
 <p>Construct data load, prepare, modeling, evaluation functions.</p>
 
+## 
+<p></p>
+
+### [Homework 4 PCA and clustering of unemployment data and party votes]
+(https://github.com/dawn-llp/DM-exercise/blob/master/HW4-lil112.md)
+
+
+## 
+<p></p>
+
+### [Homework 5 Text Mining]
+(https://github.com/dawn-llp/DM-exercise/blob/master/HW5-lil112.md)
+<p>Mining topics with lsa, nmf</p>
+
+## 
+<p></p>
+
+### [Homework 6 Network and Recommender]
+(https://github.com/dawn-llp/DM-exercise/blob/master/HW6-lil112.md)
+<p>igraph, recommenderlab</p>
